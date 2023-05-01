@@ -165,7 +165,7 @@ class JustWatchMyBridge extends BridgeAbstract
         $url = $this->getURI() . $this->getInput('mediatype') . '/new' . $myproviders;
         
         $opts[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
-        $html = getSimpleHTMLDOM($url,null,$opts);
+        $html = getSimpleHTMLDOM($url, array(), $opts);
         $html = defaultLinkTo($html, self::URI);
 
         $today = $html->find('div.title-timeline', 0);
