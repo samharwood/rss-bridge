@@ -10,7 +10,7 @@ class TwitterWithReplyContextBridge extends BridgeAbstract
     const GUEST_TOKEN_EXPIRY = 10800; // 3hrs
     const CACHE_TIMEOUT = 300; // 5min
     const DESCRIPTION = 'returns tweets and the tweet being replied to for context';
-    const MAINTAINER = 'samharwood';
+    const MAINTAINER = 'arnd-s';
     const PARAMETERS = [
         'global' => [
             'nopic' => [
@@ -225,25 +225,21 @@ EOD
         $tweets = [];
 
         // Get authentication information
-        $this->getApiKey();
 
         // Try to get all tweets
         switch ($this->queriedContext) {
             case 'By username':
-                $user = $this->makeApiCall('/1.1/users/show.json', ['screen_name' => $this->getInput('u')]);
-                if (!$user) {
-                    returnServerError('Requested username can\'t be found.');
-                }
+                $cache = new FileCache();
+                $cache->setScope('twitter');
+                $cache->setKey(['cache']);
+                $cache->purgeCache(60 * 60 * 3); // 3h
+                $api = new TwitterClient($cache);
 
-                $params = [
-                'user_id'       => $user->id_str,
-                'tweet_mode'    => 'extended'
-                ];
-
-                $data = $this->makeApiCall('/1.1/statuses/user_timeline.json', $params);
+                $data = $api->fetchUserTweets($this->getInput('u'));
                 break;
 
             case 'By keyword or hashtag':
+                die('Not implemented');
                 $params = [
                 'q'                 => urlencode($this->getInput('q')),
                 'tweet_mode'        => 'extended',
@@ -254,6 +250,7 @@ EOD
                 break;
 
             case 'By list':
+                die('Not implemented');
                 $params = [
                 'slug'              => strtolower($this->getInput('list')),
                 'owner_screen_name' => strtolower($this->getInput('user')),
@@ -264,6 +261,7 @@ EOD
                 break;
 
             case 'By list ID':
+                die('Not implemented');
                 $params = [
                 'list_id'           => $this->getInput('listid'),
                 'tweet_mode'        => 'extended',
@@ -290,7 +288,10 @@ EOD
         }
 
         // Filter out unwanted tweets
-        foreach ($data as $tweet) {
+        foreach ($data->tweets as $tweet) {
+            if (!$tweet) {
+                continue;
+            }
             // Filter out retweets to remove possible duplicates of original tweet
             switch ($this->queriedContext) {
                 case 'By keyword or hashtag':
