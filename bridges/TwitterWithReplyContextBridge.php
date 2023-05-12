@@ -129,7 +129,7 @@ EOD
 
     private $apiKey     = null;
     private $guestToken = null;
-    private $authHeader = [];
+    private $authHeaders = [];
 
     public function detectParameters($url)
     {
@@ -226,20 +226,27 @@ EOD
 
         // Get authentication information
 
+        
         // Try to get all tweets
         switch ($this->queriedContext) {
             case 'By username':
-                $cache = new FileCache();
+                $cacheFactory = new CacheFactory();
+                $cache = $cacheFactory->create();
+
                 $cache->setScope('twitter');
                 $cache->setKey(['cache']);
                 $cache->purgeCache(60 * 60 * 3); // 3h
                 $api = new TwitterClient($cache);
 
-                $data = $api->fetchUserTweets($this->getInput('u'));
+                $screenName = $this->getInput('u');
+                $screenName = trim($screenName);
+                $screenName = ltrim($screenName, '@');
+
+                $data = $api->fetchUserTweets($screenName);
                 break;
 
             case 'By keyword or hashtag':
-                die('Not implemented');
+                // Does not work with the recent twitter changes
                 $params = [
                 'q'                 => urlencode($this->getInput('q')),
                 'tweet_mode'        => 'extended',
@@ -250,7 +257,7 @@ EOD
                 break;
 
             case 'By list':
-                die('Not implemented');
+                // Does not work with the recent twitter changes
                 $params = [
                 'slug'              => strtolower($this->getInput('list')),
                 'owner_screen_name' => strtolower($this->getInput('user')),
@@ -261,7 +268,7 @@ EOD
                 break;
 
             case 'By list ID':
-                die('Not implemented');
+                // Does not work with the recent twitter changes
                 $params = [
                 'list_id'           => $this->getInput('listid'),
                 'tweet_mode'        => 'extended',
@@ -302,20 +309,22 @@ EOD
             }
             $tweets[] = $tweet;
         }
+        $hidePictures = $this->getInput('nopic');
 
+        // Does not work with the recent twitter changes      
         // Get set of tweets being replied to
-        $hideReplyContext = $this->getInput('noreplycontext');        
-        if (!$hideReplyContext) { 
-            $replyids = '';
-            foreach ($tweets as $tweet) {
-                $replyids .= $tweet->in_reply_to_status_id_str . ",";
-            }
-            $params = [
-                'id'            => $replyids,
-                'tweet_mode'    => 'extended'
-                ];
-            $replytos = $this->makeApiCall('/1.1/statuses/lookup.json', $params);
-        }
+        // $hideReplyContext = $this->getInput('noreplycontext');        
+        // if (!$hideReplyContext) { 
+        //     $replyids = '';
+        //     foreach ($tweets as $tweet) {
+        //         $replyids .= $tweet->in_reply_to_status_id_str . ",";
+        //     }
+        //     $params = [
+        //         'id'            => $replyids,
+        //         'tweet_mode'    => 'extended'
+        //         ];
+        //     $replytos = $this->makeApiCall('/1.1/statuses/lookup.json', $params);
+        // }
 
         $hidePinned = $this->getInput('nopinned');
         if ($hidePinned) {
@@ -347,9 +356,9 @@ EOD
             $item = [];
 
 
-            $item['username']  = $tweet->user->screen_name;
-            $item['fullname']  = $tweet->user->name;
-            $item['avatar']    = $tweet->user->profile_image_url_https;
+            $item['username']  = $data->user_info->legacy->screen_name;
+            $item['fullname']  = $data->user_info->legacy->name;
+            $item['avatar']    = $data->user_info->legacy->profile_image_url_https;
             $item['timestamp'] = $tweet->created_at;
             $item['id']        = $tweet->id_str;
             $item['uri']       = self::LINK_URI . $item['username'] . '/status/' . $item['id'];
@@ -365,16 +374,17 @@ EOD
 
             // For replies, match the tweet they were replying to
             $in_reply_to_tweet = null;
-            if($tweet->in_reply_to_status_id_str != null) {
-                foreach($replytos as $replyto) {
-                    if($replyto->id_str == $tweet->in_reply_to_status_id_str) {
-                        $in_reply_to_tweet = $replyto; 
-                    }
-                }
-            }
+            // Does not work with the recent twitter changes   
+            // if($tweet->in_reply_to_status_id_str != null) {
+            //     foreach($replytos as $replyto) {
+            //         if($replyto->id_str == $tweet->in_reply_to_status_id_str) {
+            //             $in_reply_to_tweet = $replyto; 
+            //         }
+            //     }
+            // }
 
-            $cleanedTweet = $this->cleanTweet($tweet);
-            $cleanedReplyTo = $this->cleanTweet($in_reply_to_tweet);
+            $cleanedTweet = $this->cleanTweet($tweet,$data);
+            $cleanedReplyTo = $this->cleanTweet($in_reply_to_tweet,$data);
             
             // generate the title
             $title = strip_tags($tweet->full_text);
@@ -384,8 +394,8 @@ EOD
             $item['title'] = $title;
 
             // generate the tweet and reply HTML
-            $avatar_image = $this->avatar_html($tweet);
-            $avatar_image_replyto = $this->avatar_html($in_reply_to_tweet);
+            $avatar_image = $this->avatar_html($tweet,$data);
+            $avatar_image_replyto = $this->avatar_html($in_reply_to_tweet,$data);
             $media_embed = $this->media_html($tweet, $item);
             $media_embed_replyto = $this->media_html($in_reply_to_tweet, $item);
             
@@ -444,14 +454,14 @@ EOD;
         usort($this->items, ['TwitterWithReplyContextBridge', 'compareTweetId']);
     }
 
-    private function cleanTweet($tweet)
+    private function cleanTweet($tweet, $data)
     {
         // Convert plain text URLs into HTML hyperlinks
         if($tweet == null) return '';
 
         if (isset($tweet->retweeted_status)) { 
             $tweet = $tweet->retweeted_status;
-            $fulltext = "RT <a href='" . self::LINK_URI . $tweet->user->screen_name . "'>@" . $tweet->user->screen_name . "</a>: " .  $tweet->full_text;
+            $fulltext = "RT <a href='" . self::LINK_URI . $data->user_info->legacy->screen_name . "'>@" . $data->user_info->legacy->screen_name . "</a>: " .  $tweet->full_text;
         } else {
             $fulltext = $tweet->full_text;
         }
@@ -500,7 +510,7 @@ EOD;
         return $cleanedTweet;
     }
 
-    private function avatar_html($tweet)
+    private function avatar_html($tweet,$data)
     {
         if($tweet == null) return '';
 
@@ -511,13 +521,13 @@ EOD;
         if (!$hidePictures) {
 
             $picture_html = <<<EOD
-    <a href="{$uri}{$tweet->user->screen_name}">
+    <a href="{$uri}{$data->user_info->legacy->screen_name}">
     <img
-    alt="{$tweet->user->screen_name}"
-    src="{$tweet->user->profile_image_url_https}"
-    title="{$tweet->user->name}" />
+    alt="{$data->user_info->legacy->screen_name}"
+    src="{$data->user_info->legacy->profile_image_url_https}"
+    title="{$data->user_info->legacy->name}" />
     </a>
-    <a href="{$uri}{$tweet->user->screen_name}">{$tweet->user->name} (@{$tweet->user->screen_name}):</a>
+    <a href="{$uri}{$data->user_info->legacy->screen_name}">{$data->user_info->legacy->name} (@{$data->user_info->legacy->screen_name}):</a>
     EOD;
 
             if ($tweet->retweeted_status) {
