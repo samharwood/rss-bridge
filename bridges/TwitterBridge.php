@@ -123,7 +123,7 @@ EOD
 
     private $apiKey     = null;
     private $guestToken = null;
-    private $authHeader = [];
+    private $authHeaders = [];
 
     public function detectParameters($url)
     {
@@ -223,17 +223,24 @@ EOD
         // Try to get all tweets
         switch ($this->queriedContext) {
             case 'By username':
-                $cache = new FileCache();
+                $cacheFactory = new CacheFactory();
+                $cache = $cacheFactory->create();
+
                 $cache->setScope('twitter');
                 $cache->setKey(['cache']);
                 $cache->purgeCache(60 * 60 * 3); // 3h
                 $api = new TwitterClient($cache);
 
-                $data = $api->fetchUserTweets($this->getInput('u'));
+                $screenName = $this->getInput('u');
+                $screenName = trim($screenName);
+                $screenName = ltrim($screenName, '@');
+
+                $data = $api->fetchUserTweets($screenName);
+
                 break;
 
             case 'By keyword or hashtag':
-                die('Not implemented');
+                // Does not work with the recent twitter changes
                 $params = [
                 'q'                 => urlencode($this->getInput('q')),
                 'tweet_mode'        => 'extended',
@@ -244,7 +251,7 @@ EOD
                 break;
 
             case 'By list':
-                die('Not implemented');
+                // Does not work with the recent twitter changes
                 $params = [
                 'slug'              => strtolower($this->getInput('list')),
                 'owner_screen_name' => strtolower($this->getInput('user')),
@@ -255,7 +262,7 @@ EOD
                 break;
 
             case 'By list ID':
-                die('Not implemented');
+                // Does not work with the recent twitter changes
                 $params = [
                 'list_id'           => $this->getInput('listid'),
                 'tweet_mode'        => 'extended',
