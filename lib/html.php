@@ -185,14 +185,28 @@ function defaultLinkTo($dom, $url)
         $dom = str_get_html($dom);
     }
 
-    foreach ($dom->find('img') as $image) {
-        $image->src = urljoin($url, $image->src);
+    // Use long method names for compatibility with simple_html_dom and DOMDocument
+
+    // Work around bug in simple_html_dom->getElementsByTagName
+    if ($dom instanceof simple_html_dom) {
+        $findByTag = function ($name) use ($dom) {
+            return $dom->getElementsByTagName($name, null);
+        };
+    } else {
+        $findByTag = function ($name) use ($dom) {
+            return $dom->getElementsByTagName($name);
+        };
     }
 
-    foreach ($dom->find('a') as $anchor) {
-        $anchor->href = urljoin($url, $anchor->href);
+    foreach ($findByTag('img') as $image) {
+        $image->setAttribute('src', urljoin($url, $image->getAttribute('src')));
     }
 
+    foreach ($findByTag('a') as $anchor) {
+        $anchor->setAttribute('href', urljoin($url, $anchor->getAttribute('href')));
+    }
+
+    // Will never be true for DOMDocument
     if ($string_convert) {
         $dom = $dom->outertext;
     }
