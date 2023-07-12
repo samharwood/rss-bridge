@@ -19,7 +19,7 @@
  */
 final class Configuration
 {
-    private const VERSION = 'dev.2023-03-22';
+    private const VERSION = 'dev.2023-07-11';
 
     private static $config = [];
 
@@ -109,11 +109,11 @@ final class Configuration
         }
 
         if (file_exists(__DIR__ . '/../whitelist.txt')) {
-            $whitelist = trim(file_get_contents(__DIR__ . '/../whitelist.txt'));
-            if ($whitelist === '*') {
+            $enabledBridges = trim(file_get_contents(__DIR__ . '/../whitelist.txt'));
+            if ($enabledBridges === '*') {
                 self::setConfig('system', 'enabled_bridges', ['*']);
             } else {
-                self::setConfig('system', 'enabled_bridges', explode("\n", $whitelist));
+                self::setConfig('system', 'enabled_bridges', array_filter(explode("\n", $enabledBridges)));
             }
         }
 
@@ -130,6 +130,7 @@ final class Configuration
 
                 // Recombine the key if it had multiple underscores
                 $key = implode('_', array_slice($nameParts, 2));
+                $key = strtolower($key);
 
                 // Handle this specifically because it's an array
                 if ($key === 'enabled_bridges') {
@@ -219,9 +220,9 @@ final class Configuration
         }
     }
 
-    public static function getConfig(string $section, string $key)
+    public static function getConfig(string $section, string $key, $default = null)
     {
-        return self::$config[strtolower($section)][strtolower($key)] ?? null;
+        return self::$config[strtolower($section)][strtolower($key)] ?? $default;
     }
 
     private static function setConfig(string $section, string $key, $value): void

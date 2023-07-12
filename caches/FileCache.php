@@ -3,42 +3,56 @@
 class FileCache implements CacheInterface
 {
     private array $config;
-    protected $scope;
-    protected $key;
+    protected string $scope;
+    protected string $key;
 
     public function __construct(array $config = [])
     {
-        $this->config = $config;
+        $default = [
+            'path'          => null,
+            'enable_purge'  => true,
+        ];
+        $this->config = array_merge($default, $config);
+        if (!$this->config['path']) {
+            throw new \Exception('The FileCache needs a path value');
+        }
+        // Normalize with a single trailing slash
+        $this->config['path'] = rtrim($this->config['path'], '/') . '/';
+    }
 
-        if (!is_dir($this->config['path'])) {
-            throw new \Exception('The cache path does not exists. You probably want: mkdir cache && chown www-data:www-data cache');
-        }
-        if (!is_writable($this->config['path'])) {
-            throw new \Exception('The cache path is not writeable. You probably want: chown www-data:www-data cache');
-        }
+    public function getConfig()
+    {
+        return $this->config;
     }
 
     public function loadData()
     {
-        if (file_exists($this->getCacheFile())) {
-            return unserialize(file_get_contents($this->getCacheFile()));
+        if (!file_exists($this->getCacheFile())) {
+            return null;
         }
-        return null;
+        $data = unserialize(file_get_contents($this->getCacheFile()));
+        if ($data === false) {
+            // Intentionally not throwing an exception
+            Logger::warning(sprintf('Failed to unserialize: %s', $this->getCacheFile()));
+            return null;
+        }
+        return $data;
     }
 
-    public function saveData($data)
+    public function saveData($data): void
     {
-        $writeStream = file_put_contents($this->getCacheFile(), serialize($data));
-        if ($writeStream === false) {
-            throw new \Exception('The cache path is not writeable. You probably want: chown www-data:www-data cache');
+        $bytes = file_put_contents($this->getCacheFile(), serialize($data), LOCK_EX);
+        if ($bytes === false) {
+            throw new \Exception(sprintf('Failed to write to: %s', $this->getCacheFile()));
         }
-        return $this;
     }
 
-    public function getTime()
+    public function getTime(): ?int
     {
+        // https://www.php.net/manual/en/function.clearstatcache.php
+        clearstatcache();
+
         $cacheFile = $this->getCacheFile();
-        clearstatcache(false, $cacheFile);
         if (file_exists($cacheFile)) {
             $time = filemtime($cacheFile);
             if ($time !== false) {
@@ -50,7 +64,7 @@ class FileCache implements CacheInterface
         return null;
     }
 
-    public function purgeCache($seconds)
+    public function purgeCache(int $seconds): void
     {
         if (! $this->config['enable_purge']) {
             return;
@@ -66,38 +80,32 @@ class FileCache implements CacheInterface
         );
 
         foreach ($cacheIterator as $cacheFile) {
-            if (in_array($cacheFile->getBasename(), ['.', '..', '.gitkeep'])) {
+            $basename = $cacheFile->getBasename();
+            $excluded = [
+                '.'         => true,
+                '..'        => true,
+                '.gitkeep'  => true,
+            ];
+            if (isset($excluded[$basename])) {
                 continue;
             } elseif ($cacheFile->isFile()) {
-                if (filemtime($cacheFile->getPathname()) < time() - $seconds) {
+                $filepath = $cacheFile->getPathname();
+                if (filemtime($filepath) < time() - $seconds) {
                     // todo: sometimes this file doesn't exists
-                    unlink($cacheFile->getPathname());
+                    unlink($filepath);
                 }
             }
         }
     }
 
-    public function setScope($scope)
+    public function setScope(string $scope): void
     {
-        if (!is_string($scope)) {
-            throw new \Exception('The given scope is invalid!');
-        }
-
         $this->scope = $this->config['path'] . trim($scope, " \t\n\r\0\x0B\\\/") . '/';
-
-        return $this;
     }
 
-    public function setKey($key)
+    public function setKey(array $key): void
     {
-        $key = json_encode($key);
-
-        if (!is_string($key)) {
-            throw new \Exception('The given key is invalid!');
-        }
-
-        $this->key = $key;
-        return $this;
+        $this->key = json_encode($key);
     }
 
     private function getScope()

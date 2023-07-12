@@ -6,7 +6,7 @@ class JornalNBridge extends BridgeAbstract
     const URI = 'https://www.jornaln.pt/';
     const DESCRIPTION = 'Returns news from the Portuguese local newspaper Jornal N';
     const MAINTAINER = 'rmscoelho';
-    const CACHE_TIMEOUT = 86400;
+    const CACHE_TIMEOUT = 3600;
     const PARAMETERS = [
         [
             'feed' => [
@@ -19,12 +19,12 @@ class JornalNBridge extends BridgeAbstract
                         'Ovar' => 'ovar',
                         'Santa Maria da Feira' => 'santa-maria-da-feira',
                     ],
-                    'Cultura' => 'cultura',
+                    'Cultura' => 'ovar/cultura',
                     'Desporto' => 'desporto',
-                    'Economia' => 'economia',
-                    'Política' => 'politica',
-                    'Opinião' => 'opiniao',
-                    'Sociedade' => 'sociedade',
+                    'Economia' => 'santa-maria-da-feira/economia',
+                    'Política' => 'santa-maria-da-feira/politica',
+                    'Opinião' => 'santa-maria-da-feira/opiniao',
+                    'Sociedade' => 'santa-maria-da-feira/sociedade',
                 ]
             ]
         ]
@@ -52,14 +52,8 @@ class JornalNBridge extends BridgeAbstract
 
     public function getName()
     {
-        $feed = $this->getInput('feed');
-        if ($this->getInput('feed') !== null && $this->getInput('feed') !== '') {
-            if ($feed === 'santa-maria-da-feira') {
-                $name = 'Santa Maria da Feira';
-            } else {
-                $name = ucfirst($feed);
-            }
-            return self::NAME . ' | ' . $name;
+        if ($this->getKey('feed')) {
+            return self::NAME . ' | ' . $this->getKey('feed');
         }
         return self::NAME;
     }
@@ -71,7 +65,7 @@ class JornalNBridge extends BridgeAbstract
 
     public function collectData()
     {
-        $url = sprintf('https://www.jornaln.pt/%s', $this->getInput('feed'));
+        $url = sprintf(self::URI . '/%s', $this->getInput('feed'));
         $dom = getSimpleHTMLDOMCached($url);
         $domSelector = '.elementor-widget-container > .elementor-posts-container';
         $dom = $dom->find($domSelector, 0);
@@ -81,18 +75,19 @@ class JornalNBridge extends BridgeAbstract
         $dom = defaultLinkTo($dom, $this->getURI());
         foreach ($dom->find('article') as $article) {
             //Get thumbnail
-            $image = $article->find('img', 0)->src;
+            $image = $article->find('.elementor-post__thumbnail img', 0)->src;
             //Timestamp
             $date = $article->find('.elementor-post-date', 0)->plaintext;
+            $date = trim($date, "\t ");
             $date = preg_replace('/ de /i', '/', $date);
             $date = preg_replace('/, /', '/', $date);
             $date = explode('/', $date);
-            $year = $date[2];
-            $month = $date[1];
-            $day = $date[0];
+            $year = (int) $date[2];
+            $month = (int) $date[1];
+            $day = (int) $date[0];
             foreach (self::PT_MONTH_NAMES as $key => $item) {
                 if ($key === strtolower($month)) {
-                    $month = $item;
+                    $month = (int) $item;
                 }
             }
             $timestamp = mktime(0, 0, 0, $month, $day, $year);
