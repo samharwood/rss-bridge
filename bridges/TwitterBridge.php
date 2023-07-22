@@ -7,7 +7,7 @@ class TwitterBridge extends BridgeAbstract
     const API_URI = 'https://api.twitter.com';
     const GUEST_TOKEN_USES = 100;
     const GUEST_TOKEN_EXPIRY = 10800; // 3hrs
-    const CACHE_TIMEOUT = 300; // 5min
+    const CACHE_TIMEOUT = 60 * 15; // 15min
     const DESCRIPTION = 'returns tweets';
     const MAINTAINER = 'arnd-s';
     const PARAMETERS = [
@@ -124,6 +124,7 @@ EOD
     private $apiKey     = null;
     private $guestToken = null;
     private $authHeaders = [];
+    private ?string $feedIconUrl = null;
 
     public function detectParameters($url)
     {
@@ -224,10 +225,6 @@ EOD
         switch ($this->queriedContext) {
             case 'By username':
                 $cache = RssBridge::getCache();
-                $cache->setScope('twitter');
-                $cache->setKey(['cache']);
-                // todo: inspect mtime instead of purging with 3h
-                $cache->purgeCache(60 * 60 * 3);
                 $api = new TwitterClient($cache);
 
                 $screenName = $this->getInput('u');
@@ -311,6 +308,10 @@ EOD
             if ($user && $user->pinned_tweet_ids_str) {
                 $pinnedTweetId = $user->pinned_tweet_ids_str;
             }
+        }
+
+        if ($this->queriedContext === 'By username') {
+            $this->feedIconUrl = $data->user_info->legacy->profile_image_url_https ?? null;
         }
 
         foreach ($tweets as $tweet) {
@@ -499,6 +500,11 @@ EOD;
         }
 
         usort($this->items, ['TwitterBridge', 'compareTweetId']);
+    }
+
+    public function getIcon()
+    {
+        return $this->feedIconUrl ?? parent::getIcon();
     }
 
     private static function compareTweetId($tweet1, $tweet2)

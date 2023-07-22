@@ -1,8 +1,5 @@
 <?php
 
-/**
- * Cache based on SQLite 3 <https://www.sqlite.org>
- */
 class SQLiteCache implements CacheInterface
 {
     private \SQLite3 $db;
@@ -36,26 +33,43 @@ class SQLiteCache implements CacheInterface
         $this->db->busyTimeout($config['timeout']);
     }
 
-    public function loadData()
+    public function loadData(int $timeout = 86400)
     {
-        $stmt = $this->db->prepare('SELECT value FROM storage WHERE key = :key');
+        $stmt = $this->db->prepare('SELECT value, updated FROM storage WHERE key = :key');
         $stmt->bindValue(':key', $this->getCacheKey());
         $result = $stmt->execute();
-        if ($result) {
-            $data = $result->fetchArray(\SQLITE3_ASSOC);
-            if (isset($data['value'])) {
-                return unserialize($data['value']);
-            }
+        if (!$result) {
+            return null;
         }
-
+        $row = $result->fetchArray(\SQLITE3_ASSOC);
+        if ($row === false) {
+            return null;
+        }
+        $value = $row['value'];
+        $modificationTime = $row['updated'];
+        if (time() - $timeout < $modificationTime) {
+            $data = unserialize($value);
+            if ($data === false) {
+                Logger::error(sprintf("Failed to unserialize: '%s'", mb_substr($value, 0, 100)));
+                return null;
+            }
+            return $data;
+        }
+        // It's a good idea to delete expired cache items.
+        // However I'm seeing lots of  SQLITE_BUSY errors so commented out for now
+        // $stmt = $this->db->prepare('DELETE FROM storage WHERE key = :key');
+        // $stmt->bindValue(':key', $this->getCacheKey());
+        // $stmt->execute();
         return null;
     }
 
     public function saveData($data): void
     {
+        $blob = serialize($data);
+
         $stmt = $this->db->prepare('INSERT OR REPLACE INTO storage (key, value, updated) VALUES (:key, :value, :updated)');
         $stmt->bindValue(':key', $this->getCacheKey());
-        $stmt->bindValue(':value', serialize($data));
+        $stmt->bindValue(':value', $blob, \SQLITE3_BLOB);
         $stmt->bindValue(':updated', time());
         $stmt->execute();
     }
@@ -66,22 +80,21 @@ class SQLiteCache implements CacheInterface
         $stmt->bindValue(':key', $this->getCacheKey());
         $result = $stmt->execute();
         if ($result) {
-            $data = $result->fetchArray(\SQLITE3_ASSOC);
-            if (isset($data['updated'])) {
-                return $data['updated'];
+            $row = $result->fetchArray(\SQLITE3_ASSOC);
+            if ($row !== false) {
+                return $row['updated'];
             }
         }
-
         return null;
     }
 
-    public function purgeCache(int $seconds): void
+    public function purgeCache(int $timeout = 86400): void
     {
         if (!$this->config['enable_purge']) {
             return;
         }
         $stmt = $this->db->prepare('DELETE FROM storage WHERE updated < :expired');
-        $stmt->bindValue(':expired', time() - $seconds);
+        $stmt->bindValue(':expired', time() - $timeout);
         $stmt->execute();
     }
 
