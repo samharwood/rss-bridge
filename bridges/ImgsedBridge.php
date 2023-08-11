@@ -212,9 +212,12 @@ HTML,
     private function parseDate($content)
     {
         $date = date_create();
-        $relativeDate = date_interval_create_from_date_string(str_replace(' ago', '', $content));
+        $dateString = str_replace(' ago', '', $content);
+        $relativeDate = date_interval_create_from_date_string($dateString);
         if ($relativeDate) {
             date_sub($date, $relativeDate);
+        } else {
+            Logger::info(sprintf('Unable to parse date string: %s', $dateString));
         }
         return date_format($date, 'r');
     }
@@ -252,5 +255,32 @@ HTML,
             return 'Username ' . $this->getInput('u') . ' - ' . $typesText . ' - Imgsed Bridge';
         }
         return parent::getName();
+    }
+
+    public function detectParameters($url)
+    {
+        $params = [
+            'post' => 'on',
+            'story' => 'on',
+            'tagged' => 'on'
+        ];
+        $regex = '/^http(s|):\/\/((www\.|)(instagram.com)\/([a-zA-Z0-9_\.]{1,30})\/(reels\/|tagged\/|)
+|(www\.|)(imgsed.com)\/(stories\/|tagged\/|)([a-zA-Z0-9_\.]{1,30})\/)/';
+        if (preg_match($regex, $url, $matches) > 0) {
+            $params['context'] = 'Username';
+            // Extract detected domain using the regex
+            $domain = $matches[8] ?? $matches[4];
+            if ($domain == 'imgsed.com') {
+                $params['u'] = $matches[10];
+                return $params;
+            } else if ($domain == 'instagram.com') {
+                $params['u'] = $matches[5];
+                return $params;
+            } else {
+                return null;
+            }
+        } else {
+            return null;
+        }
     }
 }
