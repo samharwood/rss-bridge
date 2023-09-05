@@ -140,14 +140,24 @@ class JustWatchMyBridge extends BridgeAbstract
                     ]
                 ]
             ],
+            // 'mediatype' => [
+            //     'name' => 'Type',
+            //     'defaultValue' => 'Movies',
+            //     'type' => 'list',
+            //     'values' => [
+            //         'All' => '',
+            //         'Movies' => '/movies',
+            //         'Series' => '/tv-series'
+            //     ]
+            // ],
             'mediatype' => [
                 'name' => 'Type',
-                'defaultValue' => 'Movies',
+                'defaultValue' => '0',
                 'type' => 'list',
                 'values' => [
-                    'All' => '',
-                    'Movies' => '/movies',
-                    'Series' => '/tv-series'
+                    'All' => 0,
+                    'Movies' => 1,
+                    'Series' => 2
                 ]
             ],
             'providers' => [
@@ -161,13 +171,14 @@ class JustWatchMyBridge extends BridgeAbstract
 
     public function collectData()
     {
+        $basehtml = getSimpleHTMLDOM($this->getURI());
+        $basehtml = defaultLinkTo($basehtml, self::URI);
+        $overviewhtml = getSimpleHTMLDOM($basehtml->find('.navbar__button__link', 1)->href);
+        $overviewhtml = defaultLinkTo($overviewhtml, self::URI);
         $myproviders = '?providers=' . $this->getInput('providers');
-        $url = $this->getURI() . $this->getInput('mediatype') . '/new' . $myproviders;
-        
-        $opts[CURLOPT_HTTP_VERSION] = CURL_HTTP_VERSION_1_1;
-        $html = getSimpleHTMLDOM($url, array(), $opts);
+        $html = getSimpleHTMLDOM($overviewhtml->find('.filter-bar-content-type__item', $this->getInput('mediatype'))->find('a', 0)->href . $myproviders);        
         $html = defaultLinkTo($html, self::URI);
-
+        
         $today = $html->find('div.title-timeline', 0);
         $providers = $today->find('div.provider-timeline');
 
